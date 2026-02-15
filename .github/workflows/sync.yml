@@ -1,9 +1,9 @@
-name: Sync Shipwright AppImage
+name: Sync AppImage
 
 on:
   schedule:
-    - cron: '12 4 * * *' # Runs every day at 4:12
-  workflow_dispatch: # Allows manual triggering
+    - cron: '0 4 * * *' # Checks daily at 4am UTC
+  workflow_dispatch:
 
 jobs:
   check-and-release:
@@ -14,34 +14,46 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check for updates and release
+      - name: Process Update
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # -------------------------------------------------------
+          # CONFIGURE THESE 3 VARIABLES FOR EACH REPO
+          # -------------------------------------------------------
+          UPSTREAM_REPO: "HarbourMasters/Shipwright"  # Change this!
+          ZIP_PATTERN: "*Linux.zip"                   # Usually keeps same
+          APP_NAME: "soh.AppImage"             # Rename for Gear Lever
+          # -------------------------------------------------------
         run: |
-          # 1. Get the latest Release Tag from Upstream (HarbourMasters)
-          UPSTREAM_TAG=$(gh release list --repo HarbourMasters/Shipwright --limit 1 --json tagName --jq '.[0].tagName')
-          echo "Latest upstream version: $UPSTREAM_TAG"
+          # 1. Get Latest Tag
+          UPSTREAM_TAG=$(gh release list --repo "$UPSTREAM_REPO" --limit 1 --json tagName --jq '.[0].tagName')
+          echo "Latest upstream: $UPSTREAM_TAG"
 
-          # 2. Check if we already have this release locally
+          # 2. Check if we already have it
           if gh release view "$UPSTREAM_TAG" > /dev/null 2>&1; then
-            echo "Version $UPSTREAM_TAG already exists. Skipping."
+            echo "Version $UPSTREAM_TAG already exists. Exiting."
             exit 0
           fi
 
-          echo "New version found! Processing..."
+          echo "New version found! Downloading..."
 
-          # 3. Download the specific Linux zip asset from Upstream
-          # We use a wildcard pattern to find the linux zip (e.g., SoH-Copper-Charlie-Linux.zip)
-          gh release download "$UPSTREAM_TAG" --repo HarbourMasters/Shipwright --pattern "*Linux.zip" --output shipwright.zip
+          # 3. Download the Linux Zip
+          gh release download "$UPSTREAM_TAG" --repo "$UPSTREAM_REPO" --pattern "$ZIP_PATTERN" --output update.zip || { echo "Download failed"; exit 1; }
 
-          # 4. Unzip the file
-          unzip shipwright.zip -d extracted_files
+          # 4. Extract
+          unzip update.zip -d extracted
 
-          # 5. Find the AppImage and rename it clearly
-          # We find any file ending in .appimage and move it to a clean name
-          find extracted_files -name "*.appimage" -exec mv {} ./Shipwright.AppImage \;
+          # 5. Find and Rename AppImage
+          # This finds ANY .appimage (case insensitive) and moves it to your desired name
+          find extracted -type f -iname "*.appimage" -exec mv {} "./$APP_NAME" \; -quit
 
-          # 6. Create a new release in YOUR repo with the clean AppImage
-          gh release create "$UPSTREAM_TAG" ./Shipwright.AppImage \
-            --title "Shipwright $UPSTREAM_TAG" \
-            --notes "Mirror of official release $UPSTREAM_TAG with the extracted AppImage."
+          if [ ! -f "./$APP_NAME" ]; then
+            echo "Error: No AppImage found in the zip file!"
+            ls -R extracted
+            exit 1
+          fi
+
+          # 6. Release
+          gh release create "$UPSTREAM_TAG" "./$APP_NAME" \
+            --title "$APP_NAME $UPSTREAM_TAG" \
+            --notes "Automated mirror of $UPSTREAM_REPO version $UPSTREAM_TAG"
