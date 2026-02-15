@@ -44,4 +44,4 @@ jobs:
           # 6. Create a new release in YOUR repo with the clean AppImage
           gh release create "$UPSTREAM_TAG" ./Shipwright.AppImage \
             --title "Shipwright $UPSTREAM_TAG" \
-            --notes "Mirror of official release $UPSTREAM_TAG with extracted AppImage for Gear Lever."
+            --notes "Mirror of official release $UPSTREAM_TAG with the extracted AppImage."
