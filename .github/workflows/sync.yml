@@ -2,14 +2,15 @@ name: Sync AppImage
 
 on:
   schedule:
-    - cron: '0 4 * * *' # Checks daily at 4am UTC
+    - cron: '12 12 * * *' # Checks every hour
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   check-and-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,43 +18,54 @@ jobs:
       - name: Process Update
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # -------------------------------------------------------
-          # CONFIGURE THESE 3 VARIABLES FOR EACH REPO
-          # -------------------------------------------------------
-          UPSTREAM_REPO: "HarbourMasters/Shipwright"  # Change this!
-          ZIP_PATTERN: "*Linux.zip"                   # Usually keeps same
-          APP_NAME: "soh.AppImage"             # Rename for Gear Lever
-          # -------------------------------------------------------
+          UPSTREAM_REPO: "HarbourMasters/Shipwright"
+          PATTERN: "*Linux.zip"
+          
         run: |
-          # 1. Get Latest Tag
-          UPSTREAM_TAG=$(gh release list --repo "$UPSTREAM_REPO" --limit 1 --json tagName --jq '.[0].tagName')
-          echo "Latest upstream: $UPSTREAM_TAG"
+          echo "Checking $UPSTREAM_REPO..."
 
-          # 2. Check if we already have it
-          if gh release view "$UPSTREAM_TAG" > /dev/null 2>&1; then
-            echo "Version $UPSTREAM_TAG already exists. Exiting."
+          # 1. Get Latest Tag AND Release Title from Upstream
+          # We fetch JSON data to get the release title
+          UPSTREAM_DATA=$(gh release list --repo "$UPSTREAM_REPO" --limit 1 --json tagName,name)
+          
+          LATEST_TAG=$(echo "$UPSTREAM_DATA" | jq -r '.[0].tagName')
+          RELEASE_TITLE=$(echo "$UPSTREAM_DATA" | jq -r '.[0].name')
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "Error: Could not find any releases in $UPSTREAM_REPO"
+            exit 1
+          fi
+
+          echo "Latest version: $LATEST_TAG"
+          echo "Release Title: $RELEASE_TITLE"
+
+          # 2. Check if we already have this release locally
+          if gh release view "$LATEST_TAG" > /dev/null 2>&1; then
+            echo "Release $LATEST_TAG already exists. Exiting."
             exit 0
           fi
 
-          echo "New version found! Downloading..."
+          echo "New update found! Downloading..."
 
           # 3. Download the Linux Zip
-          gh release download "$UPSTREAM_TAG" --repo "$UPSTREAM_REPO" --pattern "$ZIP_PATTERN" --output update.zip || { echo "Download failed"; exit 1; }
+          gh release download "$LATEST_TAG" --repo "$UPSTREAM_REPO" --pattern "$PATTERN" --output update.zip || { echo "Download failed"; exit 1; }
 
           # 4. Extract
-          unzip update.zip -d extracted
+          unzip -q update.zip -d extracted
 
-          # 5. Find and Rename AppImage
-          # This finds ANY .appimage (case insensitive) and moves it to your desired name
-          find extracted -type f -iname "*.appimage" -exec mv {} "./$APP_NAME" \; -quit
+          # 5. Find the AppImage (preserve original name)
+          # We capture the full path to the file found inside the zip
+          APPIMAGE_PATH=$(find extracted -type f -iname "*.appimage" | head -n 1)
 
-          if [ ! -f "./$APP_NAME" ]; then
-            echo "Error: No AppImage found in the zip file!"
+          if [ -z "$APPIMAGE_PATH" ]; then
+            echo "Error: No .appimage file found inside the zip!"
             ls -R extracted
             exit 1
           fi
 
-          # 6. Release
-          gh release create "$UPSTREAM_TAG" "./$APP_NAME" \
-            --title "$APP_NAME $UPSTREAM_TAG" \
-            --notes "Automated mirror of $UPSTREAM_REPO version $UPSTREAM_TAG"
+          echo "Found AppImage at: $APPIMAGE_PATH"
+
+          # 6. Create Release using Upstream Title and File
+          gh release create "$LATEST_TAG" "$APPIMAGE_PATH" \
+            --title "$RELEASE_TITLE" \
+            --notes "Mirror of $UPSTREAM_REPO ($RELEASE_TITLE)"
