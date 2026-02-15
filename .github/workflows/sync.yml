@@ -2,7 +2,7 @@ name: Sync AppImage
 
 on:
   schedule:
-    - cron: '12 12 * * *' # Runs at 12:12
+    - cron: '12 12 * * *'
   workflow_dispatch:
 
 permissions:
