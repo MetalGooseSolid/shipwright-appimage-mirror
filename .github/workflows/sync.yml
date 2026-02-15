@@ -24,10 +24,8 @@ jobs:
         run: |
           echo "Checking $UPSTREAM_REPO..."
 
-          # 1. Get Latest Tag AND Release Title from Upstream
-          # We fetch JSON data to get the release title
+          # 1. Get latest release metadata from upstream
           UPSTREAM_DATA=$(gh release list --repo "$UPSTREAM_REPO" --limit 1 --json tagName,name)
-          
           LATEST_TAG=$(echo "$UPSTREAM_DATA" | jq -r '.[0].tagName')
           RELEASE_TITLE=$(echo "$UPSTREAM_DATA" | jq -r '.[0].name')
 
@@ -39,22 +37,33 @@ jobs:
           echo "Latest version: $LATEST_TAG"
           echo "Release Title: $RELEASE_TITLE"
 
-          # 2. Check if our "latest" release already matches this version
-          CURRENT_TITLE=$(gh release view "latest" --json name --jq '.name' 2>/dev/null || echo "")
-          if [ "$CURRENT_TITLE" = "$RELEASE_TITLE" ]; then
-            echo "Already up to date ($RELEASE_TITLE). Exiting."
+          # 2. Get the SHA256 digest of the upstream Linux zip asset
+          UPSTREAM_DIGEST=$(gh release view "$LATEST_TAG" --repo "$UPSTREAM_REPO" --json assets \
+            --jq '.assets[] | select(.name | test("Linux\\.zip$")) | .digest')
+
+          if [ -z "$UPSTREAM_DIGEST" ]; then
+            echo "Error: Could not find digest for Linux zip asset"
+            exit 1
+          fi
+
+          echo "Upstream digest: $UPSTREAM_DIGEST"
+
+          # 3. Check if our "latest" release already has this digest
+          CURRENT_NOTES=$(gh release view "latest" --json body --jq '.body' 2>/dev/null || echo "")
+          if echo "$CURRENT_NOTES" | grep -qF "$UPSTREAM_DIGEST"; then
+            echo "Already up to date ($UPSTREAM_DIGEST). Exiting."
             exit 0
           fi
 
           echo "New update found! Downloading..."
 
-          # 3. Download the Linux Zip
+          # 4. Download the Linux Zip
           gh release download "$LATEST_TAG" --repo "$UPSTREAM_REPO" --pattern "$PATTERN" --output update.zip || { echo "Download failed"; exit 1; }
 
-          # 4. Extract
+          # 5. Extract
           unzip -q update.zip -d extracted
 
-          # 5. Find the AppImage (preserve original name)
+          # 6. Find the AppImage (preserve original name)
           APPIMAGE_PATH=$(find extracted -type f -iname "*.appimage" | head -n 1)
 
           if [ -z "$APPIMAGE_PATH" ]; then
@@ -65,11 +74,16 @@ jobs:
 
           echo "Found AppImage at: $APPIMAGE_PATH"
 
-          # 6. Delete old "latest" release and tag if they exist
+          # 7. Delete old "latest" release and tag if they exist
           gh release delete "latest" --yes 2>/dev/null || true
           git push --delete origin "latest" 2>/dev/null || true
 
-          # 7. Create new "latest" release
+          # 8. Create new "latest" release
+          UPSTREAM_URL="https://github.com/$UPSTREAM_REPO/releases/tag/$LATEST_TAG"
+          NOTES="Mirror of [$RELEASE_TITLE]($UPSTREAM_URL)
+
+$UPSTREAM_DIGEST"
+
           gh release create "latest" "$APPIMAGE_PATH" \
             --title "$RELEASE_TITLE" \
-            --notes "Mirror of $UPSTREAM_REPO ($RELEASE_TITLE)"
+            --notes "$NOTES"
