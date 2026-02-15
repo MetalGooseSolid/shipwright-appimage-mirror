@@ -15,8 +15,8 @@ The official Shipwright project releases zipped builds. Hosting the AppImage dir
 
 ## License
 
-### Mirror Scripts
+### GitHub Action Workflow
 The script in *this* repository (e.g., the GitHub Actions workflow) is licensed under the [MIT License](LICENSE).
 
 ### Mirrored Artifacts
-The binary artifacts mirrored by this project are subject to the licenses of the upstream project and its dependencies. Please refer to the [Shipwright repository](https://github.com/HarbourMasters/Shipwright) for full licensing details regarding the software itself.
+The binary artifacts mirrored by this project are subject to the licenses of the upstream project and its dependencies. Please refer to the [Shipwright repository](https://github.com/HarbourMasters/Shipwright) for licensing details regarding the software itself.
