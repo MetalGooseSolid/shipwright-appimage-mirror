@@ -5,7 +5,7 @@ This repository provides an automated mirror for [Shipwright](https://github.com
 ## Purpose
 
 The official Shipwright project releases zipped builds. Hosting the AppImage directly and statically can be useful for certain automations, or other specific needs. This project uses GitHub Actions to:
-1.  Check the upstream repository for new releases daily.
+1.  Check the upstream repository for new releases.
 2.  Download the Linux `zip` file from the latest release.
 3.  Extract and republish the `appimage` file to this repository's releases.
 
